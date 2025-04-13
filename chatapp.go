@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 )
 
 const SERVER_ADDRESS = ":8008"
@@ -48,12 +49,18 @@ func connect(user *User, userChan chan map[string]*User) {
 		b := make([]byte, 1024)
 		numBytes, err := connection.Read(b)
 		message := string(b[:numBytes])
-		if errors.Is(err, os.ErrDeadlineExceeded) {
-			fmt.Println("Too long since response: " + err.Error())
+		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				fmt.Println("Too long since response: " + err.Error())
+			} else {
+				fmt.Println("Connection closed: " + err.Error())
+			}
 			connection.Close()
-			return
-		} else if err != nil {
-			fmt.Println("Connection closed: " + err.Error())
+			// TODO - delete connection from users
+			// users := <-userChan
+			// connectionIndex := 0
+			// slices.Delete(user.connections, connectionIndex, connectionIndex+1)
+			// userChan <- users
 			return
 		}
 		sendToUsers(user.username, message, userChan)
@@ -104,11 +111,21 @@ func sendToUsers(sender string, message string, userChan chan map[string]*User) 
 		if name == sender {
 			continue
 		}
-		for _, connection := range user.connections {
+		deadConnections := make([]int, 0, len(user.connections))
+		for index, connection := range user.connections {
 			_, err := connection.Write([]byte("From " + sender + ": " + message))
-			if err != nil {
-				fmt.Println(err.Error())
+			if errors.Is(err, net.ErrClosed) {
+				deadConnections = append(deadConnections, index)
+				fmt.Println("Connection no longer exists: " + err.Error())
+			} else if err != nil {
+				fmt.Println("Unexpected error on write: " + err.Error())
 			}
+		}
+		for _, deadConnection := range deadConnections {
+			fmt.Printf("Deleting connection: %v\n", user.connections[deadConnection])
+			fmt.Println(user.connections)
+			user.connections = slices.Delete(user.connections, deadConnection, deadConnection+1)
+			fmt.Println(user.connections)
 		}
 	}
 	userChan <- users
