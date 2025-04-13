@@ -1,3 +1,8 @@
+/*
+Start and run a chat app server.
+Currently hardcoded to run on localhost:9018.
+*/
+
 package main
 
 import (
@@ -24,6 +29,9 @@ func main() {
 	serverActivate(users)
 }
 
+/*
+Start up the server.
+*/
 func serverActivate(users *UserMap) {
 	listener, err := net.Listen("tcp", SERVER_ADDRESS)
 	if err != nil {
@@ -43,6 +51,10 @@ func serverActivate(users *UserMap) {
 	}
 }
 
+/*
+Given a newConnection, let them either log back in (if an existing user) or
+sign up to the server.
+*/
 func connectToServer(newConnection net.Conn, users *UserMap) {
 	username, err := getUsername(newConnection)
 	if err != nil {
@@ -64,6 +76,11 @@ func connectToServer(newConnection net.Conn, users *UserMap) {
 	connect(user, newConnection, users)
 }
 
+/*
+Maintain a connection with a user.
+This function is responsible for getting messages from a user, and passing it
+to other functions to send off.
+*/
 func connect(user *User, connection net.Conn, users *UserMap) {
 	connection.Write([]byte(HELP_MESSAGE))
 	for {
@@ -101,14 +118,17 @@ func connect(user *User, connection net.Conn, users *UserMap) {
 	}
 }
 
-func sendToUser(sender string, sendingConnection net.Conn, message string, username string, user *User, users *UserMap) {
-	deadConnections := make([]int, 0, len(user.connections))
-	for index, connection := range user.connections {
+/*
+Given a message sent from sendingConnection by sender, send it to the user with username recipientUsername.
+*/
+func sendToUser(sender string, sendingConnection net.Conn, message string, recipientUsername string, recipientUser *User, users *UserMap) {
+	deadConnections := make([]int, 0, len(recipientUser.connections))
+	for index, connection := range recipientUser.connections {
 		var err error
 		if connection == sendingConnection {
 			continue
 		}
-		if username == sender {
+		if recipientUsername == sender {
 			_, err = connection.Write([]byte("(From yourself): " + message))
 		} else {
 			_, err = connection.Write([]byte("From " + sender + ": " + message))
@@ -123,15 +143,18 @@ func sendToUser(sender string, sendingConnection net.Conn, message string, usern
 	users.RUnlock()
 	users.Lock()
 	for _, deadConnection := range deadConnections {
-		fmt.Printf("Deleting connection: %v\n", user.connections[deadConnection])
-		fmt.Println(user.connections)
-		user.connections = slices.Delete(user.connections, deadConnection, deadConnection+1)
-		fmt.Println(user.connections)
+		fmt.Printf("Deleting connection: %v\n", recipientUser.connections[deadConnection])
+		fmt.Println(recipientUser.connections)
+		recipientUser.connections = slices.Delete(recipientUser.connections, deadConnection, deadConnection+1)
+		fmt.Println(recipientUser.connections)
 	}
 	users.Unlock()
 	users.RLock()
 }
 
+/*
+Given a message sent from sendingConnection by sender, send it to the usernames in listOfUsers.
+*/
 func sendToUsers(sender string, sendingConnection net.Conn, message string, listOfUsers []string, users *UserMap) {
 	users.RLock()
 	for _, name := range listOfUsers {
@@ -150,6 +173,9 @@ func sendToAllUsers(sender string, sendingConnection net.Conn, message string, u
 	users.RUnlock()
 }
 
+/*
+Get a password from connection.
+*/
 func getPassword(connection net.Conn) string {
 	passwordBytes := make([]byte, 24)
 	_, errW := connection.Write([]byte("Enter your password: "))
@@ -167,6 +193,9 @@ func getPassword(connection net.Conn) string {
 	return password
 }
 
+/*
+Get a username from connection.
+*/
 func getUsername(connection net.Conn) (string, error) {
 	username := ""
 	usernameIsValid := false
