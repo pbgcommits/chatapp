@@ -2,6 +2,15 @@
 A terminal-based chat app which uses concurrency/networking concepts in Golang (such as goroutines and the net package.)
 A short demo video can be seen [here](https://youtu.be/HkpxV_7A28g).
 
+## Contents
+[Features](#features)
+
+[How to run](#how-to-run)
+
+[Repository structure](#repository-structure)
+
+[To-dos](#todos)
+
 ## Features
 - Easy to use - once the server is started, join from the shell using ```nc```
 - Message individual users, or all logged in users
@@ -29,6 +38,11 @@ nc localhost 9018
 - Send a message to all online users by default. 
 - Send a message to specific users by typing -u user1:user2:... (message)
 - Get help by typing -h
+
+## Repository structure
+- ```authentication.go``` - Functions for authenticating a user joining the server
+- ```chatapp.go``` - The main functions for running the server.
+- ```user.go``` - Where the ```User``` and ```UserMap``` types are defined, as well as their relevant functions.
 
 ## TODOS
 In the future this will have:
