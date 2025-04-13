@@ -11,6 +11,6 @@ To start the server.
 
 Open a new terminal from any repo and run
 ```
-nc localhost 8008
+nc localhost 9018
 ```
 To connect to the server as a new client.

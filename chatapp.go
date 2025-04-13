@@ -9,11 +9,18 @@ import (
 	"slices"
 )
 
-const SERVER_ADDRESS = ":8008"
+const SERVER_ADDRESS = ":9018"
 
-/** Connect using nc localhost 8008
+/** Connect using nc localhost 9018
  */
 func main() {
+	// h := sha256.New()
+	// h.Write([]byte("apple"))
+	// fmt.Println(h.Sum(make([]byte, 0)))
+	// h = sha256.New()
+	// h.Write([]byte("apple"))
+	// fmt.Println(h.Sum(make([]byte, 0)))
+	// return
 	users := make(map[string]*User)
 	userChan := make(chan map[string]*User, 1)
 	userChan <- users
@@ -69,38 +76,79 @@ func connect(user *User, userChan chan map[string]*User) {
 }
 
 func signUp(newConnection net.Conn, userChan chan map[string]*User) {
-	chooseUsernameMessage := "What's your username? (max 24 chars) "
-	_, errW := newConnection.Write([]byte(chooseUsernameMessage))
-	if errW != nil {
-		fmt.Println("Err asking for username: " + errW.Error())
-		return
-	}
-	usernameBytes := make([]byte, 24)
-	numBytes, errR := newConnection.Read(usernameBytes)
-	usernameBytes = bytes.TrimSpace(usernameBytes[:numBytes])
-	username := string(usernameBytes)
-	if errR != nil {
-		fmt.Println("Error getting username: " + errR.Error())
-		return
+	username := ""
+	usernameIsValid := false
+	for !usernameIsValid {
+		chooseUsernameMessage := "What's your username? (max 24 chars) "
+		_, errW := newConnection.Write([]byte(chooseUsernameMessage))
+		if errW != nil {
+			fmt.Println("Err asking for username: " + errW.Error())
+			return
+		}
+		usernameBytes := make([]byte, 24)
+		numBytes, errR := newConnection.Read(usernameBytes)
+		if errR != nil {
+			fmt.Println("Error getting username: " + errR.Error())
+			return
+		}
+		usernameBytes = bytes.TrimSpace(usernameBytes[:numBytes])
+		username = string(usernameBytes)
+		if usernameIsValid = validUsername(username); !usernameIsValid {
+			_, errW := newConnection.Write([]byte("Invalid username (only use letters, numbers, and underscores)\n"))
+			if errW != nil {
+				fmt.Println("Err informing username is invalid: " + errW.Error())
+				return
+			}
+		}
 	}
 	users := <-userChan
-	// userChan <- users
 	user, ok := users[username]
+	userChan <- users
 	if ok {
-		// TODO: check/add password
+		i := 0
+		for i < 3 {
+			newConnection.Write([]byte("Please enter your password.\n"))
+			password := getPassword(newConnection)
+			if legalSignIn := verifyPassword(username, password, userChan); !legalSignIn {
+				fmt.Println("Failed password attempt for " + username)
+				newConnection.Write([]byte("Incorrect password for " + username + "\n"))
+				i++
+			} else {
+				break
+			}
+		}
+		if i >= 3 {
+			newConnection.Write([]byte("Too many invalid password attempts; please try again later.\n"))
+			newConnection.Close()
+			fmt.Println("Too many invalid password attempts for " + username + ": rejecting from the system")
+			return
+		}
 		newConnection.Write([]byte("Welcome back, " + username + "!\n"))
+		fmt.Println("Existing user " + username + " logged in!")
 	} else {
 		newConnection.Write([]byte("Welcome, " + username + "!\n"))
-		// users = <-userChan
+		password := ""
+		passwordIsValid := false
+		for !passwordIsValid {
+			newConnection.Write([]byte("Please create a password (max 24 chars).\n"))
+			password = getPassword(newConnection)
+			for passwordIsValid = validPassword(password); !passwordIsValid; {
+				newConnection.Write([]byte("Password cannot be blank\n"))
+				fmt.Println("Invalid password creation attempt for " + username)
+			}
+		}
+		users = <-userChan
 		users[username] = &User{
 			username:     username,
-			passwordHash: "",
+			passwordHash: hashPassword(password),
 			connections:  make([]net.Conn, 0, 1),
 		}
 		user = users[username]
+		userChan <- users
+		fmt.Println("New user " + username + " enrolled!")
 	}
+	users = <-userChan
 	user.connections = append(users[username].connections, newConnection)
-	fmt.Println(users[username])
 	userChan <- users
 	connect(users[username], userChan)
 }
@@ -129,4 +177,21 @@ func sendToUsers(sender string, message string, userChan chan map[string]*User) 
 		}
 	}
 	userChan <- users
+}
+
+func getPassword(connection net.Conn) string {
+	passwordBytes := make([]byte, 24)
+	_, errW := connection.Write([]byte("Enter your password: "))
+	if errW != nil {
+		fmt.Println("Connection closed while reading username")
+		return ""
+	}
+	numBytes, errR := connection.Read(passwordBytes)
+	if errR != nil {
+		fmt.Println("Connection closed while reading password")
+		return ""
+	}
+	password := string(bytes.TrimSpace(passwordBytes[:numBytes]))
+	fmt.Println("password: " + password)
+	return password
 }

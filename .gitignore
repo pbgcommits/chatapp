@@ -26,3 +26,8 @@ go.work.sum
 
 # Mac
 .DS_Store
+
+# Other stuff
+TODOS.md
+frontend
+backend
