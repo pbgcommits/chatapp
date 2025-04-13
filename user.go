@@ -1,3 +1,7 @@
+/*
+Everything to do with users.
+*/
+
 package main
 
 import (
