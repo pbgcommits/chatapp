@@ -6,9 +6,14 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 )
 
 const SERVER_ADDRESS = ":9018"
+const HELP_MESSAGE = `Send a message to all users by default
+Send messages to specific users by typing -u user1:user2:(etc) (message)
+Get this help message by typing -h
+`
 
 /** Connect using nc localhost 9018
  */
@@ -60,8 +65,8 @@ func connectToServer(newConnection net.Conn, users *UserMap) {
 }
 
 func connect(user *User, connection net.Conn, users *UserMap) {
+	connection.Write([]byte(HELP_MESSAGE))
 	for {
-		connection.Write([]byte("Send a message to everybody else logged in!\n"))
 		b := make([]byte, 1024)
 		numBytes, err := connection.Read(b)
 		message := string(b[:numBytes])
@@ -79,45 +84,68 @@ func connect(user *User, connection net.Conn, users *UserMap) {
 			users.Unlock()
 			return
 		}
-		sendToUsers(user.username, connection, message, users)
+		if splitMessage := strings.Split(message, " "); len(splitMessage[0]) > 1 && splitMessage[0][:2] == "-u" {
+			if len(splitMessage) < 3 {
+				connection.Write([]byte(HELP_MESSAGE))
+			} else {
+				recipients := strings.Split(splitMessage[1], ":")
+				sendToUsers(user.username, connection, strings.Join(splitMessage[2:], " "), recipients, users)
+			}
+		} else if splitMessage[0] == "-h\n" {
+			connection.Write([]byte(HELP_MESSAGE))
+			fmt.Println("sending help message")
+		} else {
+			sendToAllUsers(user.username, connection, message, users)
+		}
 		fmt.Printf("Read from user %s: %s", user.username, b)
 	}
 }
 
-func sendToUsers(sender string, sendingConnection net.Conn, message string, users *UserMap) {
+func sendToUser(sender string, sendingConnection net.Conn, message string, username string, user *User, users *UserMap) {
+	deadConnections := make([]int, 0, len(user.connections))
+	for index, connection := range user.connections {
+		var err error
+		if connection == sendingConnection {
+			continue
+		}
+		if username == sender {
+			_, err = connection.Write([]byte("(From yourself): " + message))
+		} else {
+			_, err = connection.Write([]byte("From " + sender + ": " + message))
+		}
+		if errors.Is(err, net.ErrClosed) {
+			deadConnections = append(deadConnections, index)
+			fmt.Println("Connection no longer exists: " + err.Error())
+		} else if err != nil {
+			fmt.Println("Unexpected error on write: " + err.Error())
+		}
+	}
+	users.RUnlock()
+	users.Lock()
+	for _, deadConnection := range deadConnections {
+		fmt.Printf("Deleting connection: %v\n", user.connections[deadConnection])
+		fmt.Println(user.connections)
+		user.connections = slices.Delete(user.connections, deadConnection, deadConnection+1)
+		fmt.Println(user.connections)
+	}
+	users.Unlock()
+	users.RLock()
+}
+
+func sendToUsers(sender string, sendingConnection net.Conn, message string, listOfUsers []string, users *UserMap) {
+	users.RLock()
+	for _, name := range listOfUsers {
+		user, _ := users.GetUser(name)
+		sendToUser(sender, sendingConnection, message, name, user, users)
+	}
+	users.RUnlock()
+}
+
+/* Send a message to all users logged in. */
+func sendToAllUsers(sender string, sendingConnection net.Conn, message string, users *UserMap) {
 	users.RLock()
 	for name, user := range users.users {
-		// if name == sender {
-		// 	continue
-		// }
-		deadConnections := make([]int, 0, len(user.connections))
-		for index, connection := range user.connections {
-			var err error
-			if connection == sendingConnection {
-				continue
-			}
-			if name == sender {
-				_, err = connection.Write([]byte("(From yourself): " + message))
-			} else {
-				_, err = connection.Write([]byte("From " + sender + ": " + message))
-			}
-			if errors.Is(err, net.ErrClosed) {
-				deadConnections = append(deadConnections, index)
-				fmt.Println("Connection no longer exists: " + err.Error())
-			} else if err != nil {
-				fmt.Println("Unexpected error on write: " + err.Error())
-			}
-		}
-		users.RUnlock()
-		users.Lock()
-		for _, deadConnection := range deadConnections {
-			fmt.Printf("Deleting connection: %v\n", user.connections[deadConnection])
-			fmt.Println(user.connections)
-			user.connections = slices.Delete(user.connections, deadConnection, deadConnection+1)
-			fmt.Println(user.connections)
-		}
-		users.Unlock()
-		users.RLock()
+		sendToUser(sender, sendingConnection, message, name, user, users)
 	}
 	users.RUnlock()
 }
