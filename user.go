@@ -6,26 +6,43 @@ import (
 	"sync"
 )
 
+/*
+A read-write synchronised structure, which maps usernames to Users.
+*/
 type UserMap struct {
 	users map[string]*User
 	sync.RWMutex
 }
 
+/*
+A User has a username, a hashed password, and any number of active connections.
+*/
 type User struct {
 	username     string
 	passwordHash []byte
 	connections  []net.Conn
 }
 
+/*
+Given a username, return the corresponding user.
+*/
 func (users *UserMap) GetUser(user string) (*User, bool) {
 	u, ok := users.users[user]
 	return u, ok
 }
 
+/*
+Add a new user to users.
+*/
 func (users *UserMap) AddUser(user *User) {
 	users.users[user.username] = user
 }
 
+/*
+Given a user trying to sign in from a connection,
+validate their identity maxAttempts time.
+Return false if they fail maxAttempts times, else true.
+*/
 func (user *User) SignIn(connection net.Conn, users *UserMap, maxAttempts int) bool {
 	i := 0
 	username := user.username
@@ -51,6 +68,10 @@ func (user *User) SignIn(connection net.Conn, users *UserMap, maxAttempts int) b
 	return true
 }
 
+/*
+Given a username that hasn't previously joined the server,
+add them to the server. This includes them creating a password.
+*/
 func (users *UserMap) EnrolUser(username string, connection net.Conn) (user *User) {
 	connection.Write([]byte("Welcome, " + username + "!\n"))
 	password := ""
