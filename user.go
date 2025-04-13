@@ -76,19 +76,27 @@ func (user *User) SignIn(connection net.Conn, users *UserMap, maxAttempts int) b
 Given a username that hasn't previously joined the server,
 add them to the server. This includes them creating a password.
 */
-func (users *UserMap) EnrolUser(username string, connection net.Conn) (user *User) {
+func (users *UserMap) EnrolUser(username string, connection net.Conn) (*User, bool) {
 	connection.Write([]byte("Welcome, " + username + "!\n"))
 	password := ""
 	passwordIsValid := false
-	for !passwordIsValid {
+	maxAttempts := 3
+	attempts := 0
+	for !passwordIsValid && attempts < maxAttempts {
 		connection.Write([]byte("Please create a password (max 24 chars).\n"))
 		password = getPassword(connection)
 		if passwordIsValid = validPassword(password); !passwordIsValid {
 			connection.Write([]byte("Password cannot be blank\n"))
 			fmt.Println("Invalid password creation attempt for " + username)
+			attempts++
 		}
 	}
-	user = &User{
+	if attempts >= maxAttempts {
+		fmt.Println("Too many bad password attempts.")
+		connection.Write([]byte("Too many bad password attempts\n"))
+		return nil, false
+	}
+	user := &User{
 		username:     username,
 		passwordHash: hashPassword(password),
 		connections:  make([]net.Conn, 0, 1),
@@ -97,5 +105,5 @@ func (users *UserMap) EnrolUser(username string, connection net.Conn) (user *Use
 	users.AddUser(user)
 	users.Unlock()
 	fmt.Println("New user " + username + " enrolled!")
-	return
+	return user, true
 }

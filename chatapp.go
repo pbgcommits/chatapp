@@ -68,7 +68,11 @@ func connectToServer(newConnection net.Conn, users *UserMap) {
 			return
 		}
 	} else {
-		user = users.EnrolUser(username, newConnection)
+		user_, validEnrolment := users.EnrolUser(username, newConnection)
+		if !validEnrolment {
+			return
+		}
+		user = user_
 	}
 	users.Lock()
 	user.connections = append(user.connections, newConnection)
@@ -189,7 +193,6 @@ func getPassword(connection net.Conn) string {
 		return ""
 	}
 	password := string(bytes.TrimSpace(passwordBytes[:numBytes]))
-	// fmt.Println("password: " + password)
 	return password
 }
 
