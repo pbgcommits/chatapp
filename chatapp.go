@@ -47,11 +47,11 @@ func serverActivate(users chan map[string]*User) {
 	}
 }
 
-func connect(user *User, userChan chan map[string]*User) {
+func connect(user *User, connection net.Conn, userChan chan map[string]*User) {
 	for {
 		// t := time.Now().Add(time.Second * 5)
 		// connection.SetDeadline(t)
-		connection := user.connections[0]
+		// connection := user.connections[0]
 		connection.Write([]byte("Send a message to everybody else logged in!\n"))
 		b := make([]byte, 1024)
 		numBytes, err := connection.Read(b)
@@ -150,7 +150,7 @@ func signUp(newConnection net.Conn, userChan chan map[string]*User) {
 	users = <-userChan
 	user.connections = append(users[username].connections, newConnection)
 	userChan <- users
-	connect(users[username], userChan)
+	connect(users[username], newConnection, userChan)
 }
 
 func sendToUsers(sender string, message string, userChan chan map[string]*User) {
