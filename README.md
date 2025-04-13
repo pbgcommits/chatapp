@@ -1,5 +1,6 @@
 # chatapp
-Simple chat app to practise concurrency/networking concepts in go.
+A terminal-based chat app which uses concurrency/networking concepts in Golang (such as goroutines and the net package.)
+A short demo video can be seen [here](https://youtu.be/HkpxV_7A28g).
 
 ## Features
 - Easy to use - once the server is started, join from the shell using ```nc```
