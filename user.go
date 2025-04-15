@@ -96,6 +96,10 @@ func (users *UserMap) EnrolUser(username string, connection net.Conn) (*User, bo
 		connection.Write([]byte("Too many bad password attempts\n"))
 		return nil, false
 	}
+	if _, ok := users.GetUser(username); ok {
+		fmt.Println(username + " enrolled from two spots simultaneously")
+		return nil, false
+	}
 	user := &User{
 		username:     username,
 		passwordHash: hashPassword(password),

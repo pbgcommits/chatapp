@@ -64,10 +64,12 @@ func connectToServer(newConnection net.Conn, users *UserMap) {
 	user, ok := users.GetUser(username)
 	users.RUnlock()
 	if ok {
+		fmt.Println("User " + username + " attempting connection")
 		if !user.SignIn(newConnection, users, 3) {
 			return
 		}
 	} else {
+		fmt.Println("New user " + username + " attempting connection")
 		user_, validEnrolment := users.EnrolUser(username, newConnection)
 		if !validEnrolment {
 			return
