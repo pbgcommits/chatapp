@@ -5,8 +5,10 @@ Everything to do with users.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 )
 
@@ -22,9 +24,62 @@ type UserMap struct {
 A User has a username, a hashed password, and any number of active connections.
 */
 type User struct {
-	username     string
-	passwordHash []byte
-	connections  []net.Conn
+	username      string
+	passwordHash  []byte
+	connections   []net.Conn
+	messageGetter chan *Message
+}
+
+/*
+A message is sent by a user to any number of users.
+If the user wishes to send a message to all users, numRecipients should be set to 0.
+*/
+type Message struct {
+	sender             string
+	sendingConnection  net.Conn
+	specificRecipients bool /* False if message is intended for all users */
+	// recipients         []*User
+	message string
+}
+
+func (user *User) getMessages() {
+	for {
+		fmt.Println(user.username + " waiting for messages")
+		message := <-user.messageGetter
+		fmt.Println(user.username + " recieved message: " + message.message)
+		deadConnections := make([]int, 0, len(user.connections))
+		for i, connection := range user.connections {
+			var from string
+			if user.username == message.sender {
+				if message.sendingConnection == connection {
+					continue
+				}
+				from = "(From yourself): "
+			} else if message.specificRecipients {
+				from = "From " + message.sender + " (direct message): "
+			} else {
+				from = "From " + message.sender + ": "
+			}
+			_, err := connection.Write([]byte(from + message.message))
+			if errors.Is(err, net.ErrClosed) {
+				fmt.Println("Dead connection found at " + user.username)
+				deadConnections = append(deadConnections, i)
+			} else if err != nil {
+				fmt.Println(err.Error())
+			}
+		}
+		user.trimDeadConnections(deadConnections)
+	}
+}
+
+func (user *User) trimDeadConnections(deadConnections []int) {
+	for _, i := range deadConnections {
+		err := user.connections[i].Close()
+		if err != nil {
+
+		}
+		user.connections = slices.Delete(user.connections, i, i+1)
+	}
 }
 
 /*
@@ -98,16 +153,20 @@ func (users *UserMap) EnrolUser(username string, connection net.Conn) (*User, bo
 	}
 	if _, ok := users.GetUser(username); ok {
 		fmt.Println(username + " enrolled from two spots simultaneously")
+		connection.Write([]byte("This username has just been enrolled\n"))
+		connection.Close()
 		return nil, false
 	}
 	user := &User{
-		username:     username,
-		passwordHash: hashPassword(password),
-		connections:  make([]net.Conn, 0, 1),
+		username:      username,
+		passwordHash:  hashPassword(password),
+		connections:   make([]net.Conn, 0, 1),
+		messageGetter: make(chan *Message, 10),
 	}
 	users.Lock()
 	users.AddUser(user)
 	users.Unlock()
 	fmt.Println("New user " + username + " enrolled!")
+	go user.getMessages()
 	return user, true
 }

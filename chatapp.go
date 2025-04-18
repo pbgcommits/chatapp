@@ -7,7 +7,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -127,35 +126,13 @@ func connect(user *User, connection net.Conn, users *UserMap) {
 /*
 Given a message sent from sendingConnection by sender, send it to the user with username recipientUsername.
 */
-func sendToUser(sender string, sendingConnection net.Conn, message string, recipientUsername string, recipientUser *User, users *UserMap) {
-	deadConnections := make([]int, 0, len(recipientUser.connections))
-	for index, connection := range recipientUser.connections {
-		var err error
-		if connection == sendingConnection {
-			continue
-		}
-		if recipientUsername == sender {
-			_, err = connection.Write([]byte("(From yourself): " + message))
-		} else {
-			_, err = connection.Write([]byte("From " + sender + ": " + message))
-		}
-		if errors.Is(err, net.ErrClosed) {
-			deadConnections = append(deadConnections, index)
-			fmt.Println("Connection no longer exists: " + err.Error())
-		} else if err != nil {
-			fmt.Println("Unexpected error on write: " + err.Error())
-		}
+func sendToUser(sender string, sendingConnection net.Conn, message string, recipientUser *User, specificRecipients bool) {
+	recipientUser.messageGetter <- &Message{
+		sender:             sender,
+		specificRecipients: specificRecipients,
+		sendingConnection:  sendingConnection,
+		message:            message,
 	}
-	users.RUnlock()
-	users.Lock()
-	for _, deadConnection := range deadConnections {
-		fmt.Printf("Deleting connection: %v\n", recipientUser.connections[deadConnection])
-		fmt.Println(recipientUser.connections)
-		recipientUser.connections = slices.Delete(recipientUser.connections, deadConnection, deadConnection+1)
-		fmt.Println(recipientUser.connections)
-	}
-	users.Unlock()
-	users.RLock()
 }
 
 /*
@@ -165,7 +142,7 @@ func sendToUsers(sender string, sendingConnection net.Conn, message string, list
 	users.RLock()
 	for _, name := range listOfUsers {
 		user, _ := users.GetUser(name)
-		sendToUser(sender, sendingConnection, message, name, user, users)
+		sendToUser(sender, sendingConnection, message, user, true)
 	}
 	users.RUnlock()
 }
@@ -173,8 +150,8 @@ func sendToUsers(sender string, sendingConnection net.Conn, message string, list
 /* Send a message to all users logged in. */
 func sendToAllUsers(sender string, sendingConnection net.Conn, message string, users *UserMap) {
 	users.RLock()
-	for name, user := range users.users {
-		sendToUser(sender, sendingConnection, message, name, user, users)
+	for _, user := range users.users {
+		sendToUser(sender, sendingConnection, message, user, false)
 	}
 	users.RUnlock()
 }
