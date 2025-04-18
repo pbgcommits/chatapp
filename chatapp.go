@@ -91,7 +91,6 @@ func connect(user *User, connection net.Conn, users *UserMap) {
 	for {
 		b := make([]byte, 1024)
 		numBytes, err := connection.Read(b)
-		message := string(b[:numBytes])
 		if err != nil {
 			fmt.Println("Connection closed: " + err.Error())
 			connection.Close()
@@ -106,6 +105,7 @@ func connect(user *User, connection net.Conn, users *UserMap) {
 			users.Unlock()
 			return
 		}
+		message := string(b[:numBytes])
 		if splitMessage := strings.Split(message, " "); len(splitMessage[0]) > 1 && splitMessage[0][:2] == "-u" {
 			if len(splitMessage) < 3 {
 				connection.Write([]byte(HELP_MESSAGE))
